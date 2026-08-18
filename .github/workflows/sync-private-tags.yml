@@ -42,7 +42,7 @@ jobs:
           fi
 
       - name: 检出私有源码仓库
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: master

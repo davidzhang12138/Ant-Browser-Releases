@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout private source tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: refs/tags/${{ inputs.tag }}
@@ -120,7 +120,7 @@ jobs:
 
     steps:
       - name: Checkout private source tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: refs/tags/${{ inputs.tag }}
@@ -209,7 +209,7 @@ jobs:
 
     steps:
       - name: Checkout private source tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: refs/tags/${{ inputs.tag }}
@@ -311,7 +311,7 @@ jobs:
 
     steps:
       - name: Checkout private source tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.SOURCE_REPO }}
           ref: refs/tags/${{ inputs.tag }}
