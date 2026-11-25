@@ -21,7 +21,8 @@ concurrency:
 
 env:
   SOURCE_REPO: davidzhang12138/Ant-Browser
-  MINIMUM_AUTOMATIC_TAG: v1.6.0.4
+  # 只自动发布 v1.9.7.1 及之后的 fork 版本；更早的 tag 不再重建。
+  MINIMUM_AUTOMATIC_TAG: v1.9.7.1
 
 jobs:
   dispatch-release:
