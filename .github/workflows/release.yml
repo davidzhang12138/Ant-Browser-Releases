@@ -264,12 +264,14 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: 在私有源码仓库创建 Release 标记
+    name: 在公开发布仓库创建 Release
     needs:
       - macos
       - linux
       - windows
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
 
     steps:
       - name: 校验版本 Tag
@@ -287,15 +289,62 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
-      - name: 在私有源码仓库创建 Release 标记
+      - name: 生成更新清单
+        env:
+          VERSION: ${{ env.RELEASE_TAG }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, hashlib, json, os
+          version = os.environ["VERSION"].lstrip("vV")
+          repo = os.environ["REPO"]
+          specs = {
+              "windows-amd64": ["AntBrowser-Setup-*.exe", "AntBrowser-*-windows-amd64.zip"],
+              "darwin-amd64": ["AntBrowser-*-macos-amd64.zip"],
+              "darwin-arm64": ["AntBrowser-*-macos-arm64.zip"],
+              "linux-amd64": ["ant-browser_*_amd64.deb", "AntBrowser-*-linux-amd64.tar.gz"],
+              "linux-arm64": ["ant-browser_*_arm64.deb", "AntBrowser-*-linux-arm64.tar.gz"],
+          }
+          assets = {}
+          for key, patterns in specs.items():
+              hits = []
+              for pattern in patterns:
+                  hits = sorted(glob.glob(os.path.join("release-assets", pattern)))
+                  if hits:
+                      break
+              if not hits:
+                  continue
+              path = hits[0]
+              digest = hashlib.sha256()
+              with open(path, "rb") as source:
+                  for chunk in iter(lambda: source.read(1 << 20), b""):
+                      digest.update(chunk)
+              assets[key] = {"name": os.path.basename(path), "sha256": digest.hexdigest()}
+          if not assets:
+              raise SystemExit("没有找到可识别的安装包")
+          manifest = {
+              "version": version,
+              "notesUrl": f"https://github.com/{repo}/releases/tag/{os.environ['VERSION']}",
+              "force": False,
+              "assets": assets,
+          }
+          with open("release-assets/update-manifest.json", "w", encoding="utf-8") as target:
+              json.dump(manifest, target, ensure_ascii=False, indent=2)
+          print("update manifest:", json.dumps(manifest, ensure_ascii=False))
+          PY
+
+      - name: 在公开发布仓库创建 Release
         env:
           GH_TOKEN: ${{ secrets.MAIN_REPO_TOKEN }}
+          RELEASE_REPO: ${{ github.repository }}
+          PUBLIC_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           notes_file="$(mktemp)"
           trap 'rm -f "$notes_file"' EXIT
 
-          assets_list="$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)"
+          assets_list="$(find release-assets -maxdepth 1 -type f ! -name 'update-manifest.json' -printf '%f\n' | sort)"
           asset_count="$(wc -l <<< "$assets_list")"
           test "$asset_count" -gt 0
 
@@ -312,22 +361,23 @@ jobs:
             printf -- '- 源码提交：`%s`\n' "$source_sha"
             printf -- '- 平台：Windows、Linux、macOS（共 %s 个安装包）\n\n' "$asset_count"
             printf '%s\n' "$assets_list" | sed 's/^/- `/' | sed 's/$/`/'
-            printf '\n安装包由公开仓库 [%s](https://github.com/%s) 的自动化构建发布。\n' "${GITHUB_REPOSITORY#*/}" "$GITHUB_REPOSITORY"
+            printf '\n安装包由公开仓库 [%s](https://github.com/%s) 的自动化构建发布。\n' "${RELEASE_REPO#*/}" "$RELEASE_REPO"
           } > "$notes_file"
 
-          if gh release view "$RELEASE_TAG" --repo "$SOURCE_REPO" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" \
-              --repo "$SOURCE_REPO" \
+          if GH_TOKEN="${PUBLIC_TOKEN}" gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            GH_TOKEN="${PUBLIC_TOKEN}" gh release upload "$RELEASE_TAG" release-assets/* \
+              --repo "$RELEASE_REPO" \
+              --clobber
+            GH_TOKEN="${PUBLIC_TOKEN}" gh release edit "$RELEASE_TAG" \
+              --repo "$RELEASE_REPO" \
               --title "Ant Browser ${RELEASE_TAG}" \
               --notes-file "$notes_file" \
+              --draft=false \
               "${prerelease_flag[@]}"
-            gh release upload "$RELEASE_TAG" release-assets/* \
-              --repo "$SOURCE_REPO" \
-              --clobber
           else
-            gh release create "$RELEASE_TAG" release-assets/* \
-              --repo "$SOURCE_REPO" \
-              --target master \
+            GH_TOKEN="${PUBLIC_TOKEN}" gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$RELEASE_REPO" \
+              --target main \
               --title "Ant Browser ${RELEASE_TAG}" \
               --notes-file "$notes_file" \
               "${prerelease_flag[@]}"
